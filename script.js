@@ -92,9 +92,66 @@ revealItems.forEach((item) => revealObserver.observe(item));
 const USERS_KEY = 'up_hackathon_users';
 const OTP_KEY = 'up_hackathon_otp';
 const SESSION_KEY = 'up_hackathon_session';
+const firebaseConfig = {
+  apiKey: 'AIzaSyA6JR2JVT-QWyyFyOseVTXqIEs62WVKzBk',
+  authDomain: 'up-hackathon-rivals.firebaseapp.com',
+  projectId: 'up-hackathon-rivals',
+  storageBucket: 'up-hackathon-rivals.firebasestorage.app',
+  messagingSenderId: '151906621027',
+  appId: '1:151906621027:web:dae1b0942eeb8464014a56'
+};
 
+const isFirebaseConfigured = () => Object.values(firebaseConfig).every((value) => value && String(value).trim() !== '');
 const getUsers = () => JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
 const setUsers = (users) => localStorage.setItem(USERS_KEY, JSON.stringify(users));
+
+const getDb = () => {
+  if (window.firebase && isFirebaseConfigured()) {
+    if (!window.__upHackathonDb) {
+      firebase.initializeApp(firebaseConfig);
+      window.__upHackathonDb = firebase.firestore();
+    }
+    return window.__upHackathonDb;
+  }
+  return null;
+};
+
+const syncUserToDatabase = async (user) => {
+  const db = getDb();
+  if (!db) return;
+
+  try {
+    await db.collection('registeredUsers').doc(user.email).set({
+      name: user.name,
+      email: user.email,
+      college: user.college,
+      phone: user.phone,
+      track: user.track,
+      summary: user.summary,
+      createdAt: user.createdAt || new Date().toISOString(),
+      source: 'website'
+    }, { merge: true });
+  } catch (error) {
+    console.warn('Firebase sync failed, fallback retained locally.', error);
+  }
+};
+
+const findUserByEmail = async (email) => {
+  const db = getDb();
+  if (db) {
+    try {
+      const snapshot = await db.collection('registeredUsers').where('email', '==', email).limit(1).get();
+      if (!snapshot.empty) {
+        return snapshot.docs[0].data();
+      }
+    } catch (error) {
+      console.warn('Firebase lookup failed; falling back to local storage.', error);
+    }
+  }
+
+  const localUsers = getUsers();
+  return localUsers.find((user) => user.email === email) || null;
+};
 
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
@@ -128,7 +185,7 @@ const handleRegisterFlow = () => {
   const statusEl = document.getElementById('register-status');
   const otpInput = document.getElementById('register-otp');
 
-  form.addEventListener('submit', (event) => {
+  form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const action = event.submitter?.dataset.action || 'send-register-otp';
 
@@ -169,10 +226,22 @@ const handleRegisterFlow = () => {
 
       const users = getUsers();
       const existing = users.find((user) => user.email === email);
+      const profile = {
+        name,
+        email,
+        college,
+        phone,
+        track,
+        summary,
+        createdAt: new Date().toISOString()
+      };
+
       if (!existing) {
-        users.push({ name, email, college, phone, track, summary, createdAt: new Date().toISOString() });
+        users.push(profile);
         setUsers(users);
       }
+
+      await syncUserToDatabase(profile);
 
       localStorage.setItem(SESSION_KEY, JSON.stringify({ email, name, loggedIn: true }));
       showStatus(statusEl, 'Registration successful! Redirecting...', 'success');
@@ -206,7 +275,7 @@ const handleLoginFlow = () => {
   const otpInput = document.getElementById('login-otp');
   const statusEl = document.getElementById('login-status');
 
-  form.addEventListener('submit', (event) => {
+  form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const action = event.submitter?.dataset.action || 'send-login-otp';
     const email = normalizeEmail(emailInput?.value || '');
@@ -217,8 +286,7 @@ const handleLoginFlow = () => {
         return;
       }
 
-      const users = getUsers();
-      const exists = users.some((user) => user.email === email);
+      const exists = await findUserByEmail(email);
       if (!exists) {
         showStatus(statusEl, 'No account found for this email. Please register first.', 'error');
         return;
@@ -246,8 +314,7 @@ const handleLoginFlow = () => {
         return;
       }
 
-      const users = getUsers();
-      const user = users.find((u) => u.email === email);
+      const user = await findUserByEmail(email);
       localStorage.setItem(SESSION_KEY, JSON.stringify({ email, name: user?.name || 'User', loggedIn: true }));
       showStatus(statusEl, 'Login successful! Redirecting...', 'success');
       setTimeout(() => {
