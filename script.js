@@ -90,8 +90,27 @@ const revealObserver = new IntersectionObserver((entries) => {
 revealItems.forEach((item) => revealObserver.observe(item));
 
 const USERS_KEY = 'up_hackathon_users';
-const OTP_KEY = 'up_hackathon_otp';
 const SESSION_KEY = 'up_hackathon_session';
+const OTP_EMAIL_KEY = 'up_hackathon_pending_email';
+
+const resolveOtpApiBase = () => {
+  const host = (window.location?.hostname || '').toLowerCase();
+  const protocol = (window.location?.protocol || '').toLowerCase();
+
+  if (!host || protocol === 'file:' || host === 'localhost' || host === '127.0.0.1') {
+    return 'http://localhost:5001/up-hackathon-rivals/us-central1';
+  }
+
+  if (host.includes('firebaseapp.com') || host.includes('web.app') || host.includes('up-hackathon-rivals')) {
+    return 'https://us-central1-up-hackathon-rivals.cloudfunctions.net';
+  }
+
+  return window.location.origin;
+};
+
+globalThis.resolveOtpApiBase = resolveOtpApiBase;
+window.resolveOtpApiBase = resolveOtpApiBase;
+const OTP_API_BASE = resolveOtpApiBase();
 const firebaseConfig = {
   apiKey: 'AIzaSyA6JR2JVT-QWyyFyOseVTXqIEs62WVKzBk',
   authDomain: 'up-hackathon-rivals.firebaseapp.com',
@@ -125,6 +144,28 @@ const getAuth = () => {
     return window.__upHackathonAuth;
   }
   return null;
+};
+
+const sendOtpToApi = async (email) => {
+  const response = await fetch(`${OTP_API_BASE}/requestOtp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+
+  const result = await response.json();
+  return { ok: response.ok, ...result };
+};
+
+const verifyOtpWithApi = async (email, otp) => {
+  const response = await fetch(`${OTP_API_BASE}/verifyOtp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, otp })
+  });
+
+  const result = await response.json();
+  return { ok: response.ok, ...result };
 };
 
 const registerWithFirebaseAuth = async (email, password, profile) => {
@@ -237,13 +278,18 @@ const showStatus = (element, message, type = '') => {
 
 const normalizeEmail = (value) => value.trim().toLowerCase();
 
+const showOtpBox = (boxId, visible) => {
+  const box = document.getElementById(boxId);
+  if (box) {
+    box.classList.toggle('visible', visible);
+  }
+};
+
 const handleRegisterFlow = () => {
   const form = document.querySelector('.register-form');
   if (!form) return;
 
-  const otpBox = document.getElementById('register-otp-box');
   const statusEl = document.getElementById('register-status');
-  const otpInput = document.getElementById('register-otp');
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -269,9 +315,33 @@ const handleRegisterFlow = () => {
         return;
       }
 
+      const otpResult = await sendOtpToApi(email);
+      if (!otpResult.ok) {
+        showStatus(statusEl, otpResult.message || 'Unable to send OTP.', 'error');
+        return;
+      }
+
+      sessionStorage.setItem(OTP_EMAIL_KEY, email);
+      showStatus(statusEl, 'OTP sent to your email. Verify it to finish registration.', 'success');
+      showOtpBox('register-otp-box', true);
+      const otpInput = document.getElementById('register-otp');
+      if (otpInput) otpInput.focus();
+      return;
+    }
+
+    if (action === 'verify-register') {
+      const otp = document.getElementById('register-otp')?.value || '';
+      const storedEmail = sessionStorage.getItem(OTP_EMAIL_KEY) || email;
+      const verification = await verifyOtpWithApi(storedEmail, otp);
+
+      if (!verification.ok) {
+        showStatus(statusEl, verification.message || 'OTP verification failed.', 'error');
+        return;
+      }
+
       const profile = {
         name,
-        email,
+        email: storedEmail,
         college,
         phone,
         track,
@@ -279,26 +349,47 @@ const handleRegisterFlow = () => {
         createdAt: new Date().toISOString()
       };
 
-      const authResult = await registerWithFirebaseAuth(email, password, profile);
+      const authResult = await registerWithFirebaseAuth(storedEmail, document.getElementById('reg-password')?.value || '', profile);
       if (!authResult.ok) {
         showStatus(statusEl, authResult.error || 'Registration failed.', 'error');
         return;
       }
 
       const users = getUsers();
-      const existing = users.find((user) => user.email === email);
+      const existing = users.find((user) => user.email === storedEmail);
       if (!existing) {
         users.push(profile);
         setUsers(users);
       }
 
       await syncUserToDatabase(profile);
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ email, name, loggedIn: true }));
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ email: storedEmail, name, loggedIn: true }));
       showStatus(statusEl, 'Registration successful! Redirecting...', 'success');
       setTimeout(() => {
         window.location.href = 'index.html';
       }, 1200);
     }
+  });
+
+  const resendButton = document.querySelector('[data-action="resend-register"]');
+  resendButton?.addEventListener('click', async () => {
+    const email = normalizeEmail(document.getElementById('reg-email')?.value || '');
+    if (!email) {
+      showStatus(statusEl, 'Enter your email first.', 'error');
+      return;
+    }
+
+    const otpResult = await sendOtpToApi(email);
+    if (!otpResult.ok) {
+      showStatus(statusEl, otpResult.message || 'Unable to resend OTP.', 'error');
+      return;
+    }
+
+    sessionStorage.setItem(OTP_EMAIL_KEY, email);
+    showStatus(statusEl, 'A new OTP has been sent to your email.', 'success');
+    const otpInput = document.getElementById('register-otp');
+    if (otpInput) otpInput.value = '';
+    if (otpInput) otpInput.focus();
   });
 };
 
@@ -306,9 +397,7 @@ const handleLoginFlow = () => {
   const form = document.querySelector('.login-form');
   if (!form) return;
 
-  const otpBox = document.getElementById('login-otp-box');
   const emailInput = document.getElementById('login-email');
-  const otpInput = document.getElementById('login-otp');
   const statusEl = document.getElementById('login-status');
 
   form.addEventListener('submit', async (event) => {
@@ -324,19 +413,64 @@ const handleLoginFlow = () => {
         return;
       }
 
-      const authResult = await loginWithFirebaseAuth(email, password);
+      const otpResult = await sendOtpToApi(email);
+      if (!otpResult.ok) {
+        showStatus(statusEl, otpResult.message || 'Unable to send OTP.', 'error');
+        return;
+      }
+
+      sessionStorage.setItem(OTP_EMAIL_KEY, email);
+      showStatus(statusEl, 'OTP sent to your email. Enter it to continue.', 'success');
+      showOtpBox('login-otp-box', true);
+      const otpInput = document.getElementById('login-otp');
+      if (otpInput) otpInput.focus();
+      return;
+    }
+
+    if (action === 'verify-login') {
+      const otp = document.getElementById('login-otp')?.value || '';
+      const storedEmail = sessionStorage.getItem(OTP_EMAIL_KEY) || email;
+      const verification = await verifyOtpWithApi(storedEmail, otp);
+      if (!verification.ok) {
+        showStatus(statusEl, verification.message || 'OTP verification failed.', 'error');
+        return;
+      }
+
+      const password = document.getElementById('login-password')?.value || '';
+      const authResult = await loginWithFirebaseAuth(storedEmail, password);
       if (!authResult.ok) {
         showStatus(statusEl, authResult.error || 'Login failed.', 'error');
         return;
       }
 
-      const user = await findUserByEmail(email);
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ email, name: user?.name || 'User', loggedIn: true }));
+      const user = await findUserByEmail(storedEmail);
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ email: storedEmail, name: user?.name || 'User', loggedIn: true }));
       showStatus(statusEl, 'Login successful! Redirecting...', 'success');
       setTimeout(() => {
         window.location.href = 'index.html';
       }, 1200);
     }
+  });
+
+  const resendButton = document.querySelector('[data-action="resend-login"]');
+  resendButton?.addEventListener('click', async () => {
+    const email = normalizeEmail(emailInput?.value || '');
+    if (!email) {
+      showStatus(statusEl, 'Enter your email first.', 'error');
+      return;
+    }
+
+    const otpResult = await sendOtpToApi(email);
+    if (!otpResult.ok) {
+      showStatus(statusEl, otpResult.message || 'Unable to resend OTP.', 'error');
+      return;
+    }
+
+    sessionStorage.setItem(OTP_EMAIL_KEY, email);
+    showStatus(statusEl, 'A new OTP has been sent to your email.', 'success');
+    const otpInput = document.getElementById('login-otp');
+    if (otpInput) otpInput.value = '';
+    if (otpInput) otpInput.focus();
   });
 };
 
