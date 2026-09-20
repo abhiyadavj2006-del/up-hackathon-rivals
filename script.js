@@ -116,12 +116,77 @@ const getDb = () => {
   return null;
 };
 
-const syncUserToDatabase = async (user) => {
-  const db = getDb();
-  if (!db) return;
+const getAuth = () => {
+  if (window.firebase && isFirebaseConfigured()) {
+    if (!window.__upHackathonAuth) {
+      firebase.initializeApp(firebaseConfig);
+      window.__upHackathonAuth = firebase.auth();
+    }
+    return window.__upHackathonAuth;
+  }
+  return null;
+};
+
+const registerWithFirebaseAuth = async (email, password, profile) => {
+  const auth = getAuth();
+  if (!auth) {
+    return { ok: false, error: 'Firebase Auth is not available.' };
+  }
 
   try {
-    await db.collection('registeredUsers').doc(user.email).set({
+    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+    const user = userCredential.user;
+
+    const userProfile = {
+      uid: user.uid,
+      name: profile.name,
+      email: profile.email,
+      college: profile.college,
+      phone: profile.phone,
+      track: profile.track,
+      summary: profile.summary,
+      createdAt: profile.createdAt || new Date().toISOString(),
+      source: 'website'
+    };
+
+    const db = getDb();
+    if (db) {
+      await db.collection('Users').doc(user.uid).set(userProfile, { merge: true });
+    }
+
+    return { ok: true, user: userProfile };
+  } catch (error) {
+    console.error('Firebase Auth registration failed:', error);
+    return { ok: false, error: error.message || 'Registration failed.' };
+  }
+};
+
+const loginWithFirebaseAuth = async (email, password) => {
+  const auth = getAuth();
+  if (!auth) {
+    return { ok: false, error: 'Firebase Auth is not available.' };
+  }
+
+  try {
+    const userCredential = await auth.signInWithEmailAndPassword(email, password);
+    const user = userCredential.user;
+    return { ok: true, user };
+  } catch (error) {
+    console.error('Firebase Auth login failed:', error);
+    return { ok: false, error: error.message || 'Login failed.' };
+  }
+};
+
+const syncUserToDatabase = async (user) => {
+  const db = getDb();
+
+  if (!db) {
+    console.error('Firebase database is not available.');
+    return false;
+  }
+
+  try {
+    await db.collection('Users').doc(user.email).set({
       name: user.name,
       email: user.email,
       college: user.college,
@@ -131,35 +196,37 @@ const syncUserToDatabase = async (user) => {
       createdAt: user.createdAt || new Date().toISOString(),
       source: 'website'
     }, { merge: true });
+
+    console.log('✅ User saved to Firestore:', user.email);
+    return true;
   } catch (error) {
-    console.warn('Firebase sync failed, fallback retained locally.', error);
+    console.error('❌ Firebase Firestore error:', error);
+    return false;
   }
 };
 
 const findUserByEmail = async (email) => {
   const db = getDb();
+
   if (db) {
     try {
-      const snapshot = await db.collection('registeredUsers').where('email', '==', email).limit(1).get();
+      const snapshot = await db
+        .collection('Users')
+        .where('email', '==', email)
+        .limit(1)
+        .get();
+
       if (!snapshot.empty) {
         return snapshot.docs[0].data();
       }
     } catch (error) {
-      console.warn('Firebase lookup failed; falling back to local storage.', error);
+      console.error('Firebase lookup failed:', error);
     }
   }
 
   const localUsers = getUsers();
   return localUsers.find((user) => user.email === email) || null;
 };
-
-const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
-
-const setOtpState = (email, otp) => {
-  localStorage.setItem(OTP_KEY, JSON.stringify({ email, otp, expiresAt: Date.now() + 5 * 60 * 1000 }));
-};
-
-const getOtpState = () => JSON.parse(localStorage.getItem(OTP_KEY) || 'null');
 
 const showStatus = (element, message, type = '') => {
   if (!element) return;
@@ -169,13 +236,6 @@ const showStatus = (element, message, type = '') => {
 };
 
 const normalizeEmail = (value) => value.trim().toLowerCase();
-
-const showOtpBox = (boxId, visible) => {
-  const box = document.getElementById(boxId);
-  if (box) {
-    box.classList.toggle('visible', visible);
-  }
-};
 
 const handleRegisterFlow = () => {
   const form = document.querySelector('.register-form');
@@ -197,35 +257,18 @@ const handleRegisterFlow = () => {
     const summary = document.getElementById('reg-summary')?.value.trim();
 
     if (action === 'send-register-otp') {
-      if (!name || !email || !college || !phone) {
-        showStatus(statusEl, 'Please fill in all required fields.', 'error');
+      const password = document.getElementById('reg-password')?.value || '';
+
+      if (!name || !email || !college || !phone || !password) {
+        showStatus(statusEl, 'Please fill in all required fields, including password.', 'error');
         return;
       }
 
-      const otp = generateOtp();
-      setOtpState(email, otp);
-      showStatus(statusEl, `OTP sent to ${email}. Demo code: ${otp}`, 'success');
-      showOtpBox('register-otp-box', true);
-      if (otpInput) otpInput.focus();
-      return;
-    }
-
-    if (action === 'verify-register') {
-      const currentOtp = getOtpState();
-      const enteredOtp = (otpInput?.value || '').trim();
-
-      if (!currentOtp || currentOtp.email !== email) {
-        showStatus(statusEl, 'Please request a new OTP first.', 'error');
+      if (password.length < 6) {
+        showStatus(statusEl, 'Password must be at least 6 characters long.', 'error');
         return;
       }
 
-      if (String(currentOtp.otp) !== enteredOtp) {
-        showStatus(statusEl, 'Invalid OTP. Please try again.', 'error');
-        return;
-      }
-
-      const users = getUsers();
-      const existing = users.find((user) => user.email === email);
       const profile = {
         name,
         email,
@@ -236,33 +279,26 @@ const handleRegisterFlow = () => {
         createdAt: new Date().toISOString()
       };
 
+      const authResult = await registerWithFirebaseAuth(email, password, profile);
+      if (!authResult.ok) {
+        showStatus(statusEl, authResult.error || 'Registration failed.', 'error');
+        return;
+      }
+
+      const users = getUsers();
+      const existing = users.find((user) => user.email === email);
       if (!existing) {
         users.push(profile);
         setUsers(users);
       }
 
       await syncUserToDatabase(profile);
-
       localStorage.setItem(SESSION_KEY, JSON.stringify({ email, name, loggedIn: true }));
       showStatus(statusEl, 'Registration successful! Redirecting...', 'success');
       setTimeout(() => {
         window.location.href = 'index.html';
       }, 1200);
     }
-  });
-
-  const resendButton = document.querySelector('[data-action="resend-register"]');
-  resendButton?.addEventListener('click', () => {
-    const email = normalizeEmail(document.getElementById('reg-email')?.value || '');
-    if (!email) {
-      showStatus(statusEl, 'Enter your email first.', 'error');
-      return;
-    }
-    const otp = generateOtp();
-    setOtpState(email, otp);
-    showStatus(statusEl, `New OTP sent to ${email}. Demo code: ${otp}`, 'success');
-    if (otpInput) otpInput.value = '';
-    if (otpInput) otpInput.focus();
   });
 };
 
@@ -281,36 +317,16 @@ const handleLoginFlow = () => {
     const email = normalizeEmail(emailInput?.value || '');
 
     if (action === 'send-login-otp') {
-      if (!email) {
-        showStatus(statusEl, 'Please enter your email.', 'error');
+      const password = document.getElementById('login-password')?.value || '';
+
+      if (!email || !password) {
+        showStatus(statusEl, 'Please enter both email and password.', 'error');
         return;
       }
 
-      const exists = await findUserByEmail(email);
-      if (!exists) {
-        showStatus(statusEl, 'No account found for this email. Please register first.', 'error');
-        return;
-      }
-
-      const otp = generateOtp();
-      setOtpState(email, otp);
-      showStatus(statusEl, `OTP sent to ${email}. Demo code: ${otp}`, 'success');
-      showOtpBox('login-otp-box', true);
-      if (otpInput) otpInput.focus();
-      return;
-    }
-
-    if (action === 'verify-login') {
-      const currentOtp = getOtpState();
-      const enteredOtp = (otpInput?.value || '').trim();
-
-      if (!currentOtp || currentOtp.email !== email) {
-        showStatus(statusEl, 'Please request a new OTP first.', 'error');
-        return;
-      }
-
-      if (String(currentOtp.otp) !== enteredOtp) {
-        showStatus(statusEl, 'Invalid OTP. Please try again.', 'error');
+      const authResult = await loginWithFirebaseAuth(email, password);
+      if (!authResult.ok) {
+        showStatus(statusEl, authResult.error || 'Login failed.', 'error');
         return;
       }
 
@@ -321,20 +337,6 @@ const handleLoginFlow = () => {
         window.location.href = 'index.html';
       }, 1200);
     }
-  });
-
-  const resendButton = document.querySelector('[data-action="resend-login"]');
-  resendButton?.addEventListener('click', () => {
-    const email = normalizeEmail(emailInput?.value || '');
-    if (!email) {
-      showStatus(statusEl, 'Enter your email first.', 'error');
-      return;
-    }
-    const otp = generateOtp();
-    setOtpState(email, otp);
-    showStatus(statusEl, `New OTP sent to ${email}. Demo code: ${otp}`, 'success');
-    if (otpInput) otpInput.value = '';
-    if (otpInput) otpInput.focus();
   });
 };
 
