@@ -40,6 +40,7 @@ The site keeps local storage as a fallback when Firebase is not configured. The 
 1. Push the project to a GitHub repository.
 2. Open repository settings > Pages.
 3. Select the main branch and deploy the root folder.
+4. Keep a `404.html` file in the root so deep links and missing routes redirect back to the homepage.
 
 ### Vercel
 1. Import the repository.
