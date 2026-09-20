@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Participants | Up Hackathon Rivals</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { background: linear-gradient(135deg, #eef2ff, #f8fafc); }
+    .participants-page { padding: 120px 20px 80px; }
+    .participants-wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: rgba(255,255,255,0.96);
+      border: 1px solid #e2e8f0;
+      border-radius: 24px;
+      box-shadow: 0 28px 60px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+    }
+    .participants-header {
+      padding: 26px 30px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .participants-header h1 { margin: 0; font-size: clamp(2rem, 3vw, 2.7rem); }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .toolbar input,
+    .toolbar select,
+    .toolbar button {
+      border-radius: 12px;
+      border: 1px solid #dbe3ef;
+      padding: 10px 12px;
+      font: inherit;
+    }
+    .toolbar input { min-width: 220px; }
+    .toolbar button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+      transition: opacity 0.2s ease;
+    }
+    .toolbar button:hover { opacity: 0.92; }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 820px;
+    }
+    th, td {
+      padding: 16px 18px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      background: #f8fafc;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text);
+    }
+    td { color: var(--dark); }
+    .status-pill {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(16,185,129,0.1);
+      color: #047857;
+      font-weight: 700;
+      font-size: 0.8rem;
+    }
+    .empty-state {
+      padding: 32px 24px;
+      color: var(--text);
+      text-align: center;
+    }
+    @media (max-width: 640px) {
+      .participants-header { padding: 22px 18px; }
+      th, td { padding: 12px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="participants-page">
+    <div class="participants-wrap">
+      <div class="participants-header">
+        <div>
+          <h1>Registered Participants</h1>
+          <div class="toolbar">
+            <input id="searchInput" type="text" placeholder="Search by name or email" />
+            <select id="trackFilter">
+              <option value="all">All tracks</option>
+              <option>AI & Automation</option>
+              <option>HealthTech</option>
+              <option>Sustainability</option>
+              <option>Smart Infrastructure</option>
+              <option>Space & Defense</option>
+              <option>Culture & Heritage</option>
+            </select>
+            <button id="exportCsvBtn" type="button">Export CSV</button>
+          </div>
+        </div>
+        <a href="index.html" class="btn-secondary">Back to Home</a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>College</th>
+              <th>Phone</th>
+              <th>Track</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="participants-body">
+            <tr>
+              <td colspan="6" class="empty-state">Loading participants...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: 'AIzaSyA6JR2JVT-QWyyFyOseVTXqIEs62WVKzBk',
+      authDomain: 'up-hackathon-rivals.firebaseapp.com',
+      projectId: 'up-hackathon-rivals',
+      storageBucket: 'up-hackathon-rivals.firebasestorage.app',
+      messagingSenderId: '151906621027',
+      appId: '1:151906621027:web:dae1b0942eeb8464014a56'
+    };
+
+    const searchInput = document.getElementById('searchInput');
+    const trackFilter = document.getElementById('trackFilter');
+    const exportBtn = document.getElementById('exportCsvBtn');
+    const tbody = document.getElementById('participants-body');
+    let allParticipants = [];
+
+    const renderRows = () => {
+      const searchValue = (searchInput?.value || '').trim().toLowerCase();
+      const selectedTrack = trackFilter?.value || 'all';
+
+      const filtered = allParticipants.filter((participant) => {
+        const matchesSearch = !searchValue || [participant.name, participant.email, participant.college, participant.phone]
+          .join(' ')
+          .toLowerCase()
+          .includes(searchValue);
+
+        const matchesTrack = selectedTrack === 'all' || participant.track === selectedTrack;
+        return matchesSearch && matchesTrack;
+      });
+
+      if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No matching registrations found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((participant) => `
+        <tr>
+          <td>${participant.name || '—'}</td>
+          <td>${participant.email || '—'}</td>
+          <td>${participant.college || '—'}</td>
+          <td>${participant.phone || '—'}</td>
+          <td>${participant.track || '—'}</td>
+          <td><span class="status-pill">Registered</span></td>
+        </tr>
+      `).join('');
+    };
+
+    const exportCsv = () => {
+      if (!allParticipants.length) return;
+
+      const rows = [
+        ['Name', 'Email', 'College', 'Phone', 'Track', 'Created At'],
+        ...allParticipants.map((participant) => [
+          participant.name || '',
+          participant.email || '',
+          participant.college || '',
+          participant.phone || '',
+          participant.track || '',
+          participant.createdAt || ''
+        ])
+      ];
+
+      const csv = rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'participants.csv';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    };
+
+    if (window.firebase) {
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.firestore();
+
+      db.collection('registeredUsers').orderBy('createdAt', 'desc').onSnapshot((snapshot) => {
+        allParticipants = snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
+        renderRows();
+      }, () => {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Unable to load participants. Check Firebase Firestore and rules.</td></tr>';
+      });
+    } else {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Firebase is not available. Please check the project configuration.</td></tr>';
+    }
+
+    searchInput?.addEventListener('input', renderRows);
+    trackFilter?.addEventListener('change', renderRows);
+    exportBtn?.addEventListener('click', exportCsv);
+  </script>
+</body>
+</html>
