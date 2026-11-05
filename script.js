@@ -117,12 +117,12 @@ globalThis.resolveOtpApiBase = resolveOtpApiBase;
 window.resolveOtpApiBase = resolveOtpApiBase;
 const OTP_API_BASE = resolveOtpApiBase();
 const firebaseConfig = {
-  apiKey: 'AIzaSyA6JR2JVT-QWyyFyOseVTXqIEs62WVKzBk',
-  authDomain: 'up-hackathon-rivals.firebaseapp.com',
-  projectId: 'up-hackathon-rivals',
-  storageBucket: 'up-hackathon-rivals.firebasestorage.app',
-  messagingSenderId: '151906621027',
-  appId: '1:151906621027:web:dae1b0942eeb8464014a56'
+  apiKey: 'AIzaSyBZWn_MYM_DCii9PLwXrq0kRLD3z04X8Co',
+  authDomain: 'up-hackathon-rivals-8f4e9.firebaseapp.com',
+  projectId: 'up-hackathon-rivals-8f4e9',
+  storageBucket: 'up-hackathon-rivals-8f4e9.firebasestorage.app',
+  messagingSenderId: '174229419068',
+  appId: '1:174229419068:web:3db3df08f7580a85db3f39'
 };
 
 const isFirebaseConfigured = () => Object.values(firebaseConfig).every((value) => value && String(value).trim() !== '');
