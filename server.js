@@ -25,7 +25,7 @@ const getTransporter = () => {
   });
 };
 
-app.post('/api/send-otp', (req, res) => {
+const sendOtpHandler = (req, res) => {
   const { email } = req.body || {};
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -59,9 +59,9 @@ app.post('/api/send-otp', (req, res) => {
 
     return res.json({ ok: true, message: 'OTP sent to your email.' });
   });
-});
+};
 
-app.post('/api/verify-otp', (req, res) => {
+const verifyOtpHandler = (req, res) => {
   const { email, otp } = req.body || {};
 
   if (!email || !otp) {
@@ -86,6 +86,14 @@ app.post('/api/verify-otp', (req, res) => {
 
   otpStore.delete(key);
   return res.json({ ok: true, message: 'OTP verified successfully.' });
+};
+
+app.post('/api/send-otp', sendOtpHandler);
+app.post('/requestOtp', sendOtpHandler);
+app.post('/api/verify-otp', verifyOtpHandler);
+app.post('/verifyOtp', verifyOtpHandler);
+app.get('/', (_req, res) => {
+  res.json({ ok: true, service: 'up-hackathon-rivals OTP backend' });
 });
 
 app.get('/health', (_req, res) => {

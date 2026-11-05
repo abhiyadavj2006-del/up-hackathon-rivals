@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: up-hackathon-otp
+    env: node
+    plan: free
+    repo: https://github.com/abhiyadavj2006-del/up-hackathon-rivals
+    buildCommand: npm install
+    startCommand: npm start
