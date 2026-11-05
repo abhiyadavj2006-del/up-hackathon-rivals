@@ -13,7 +13,7 @@
   },
   "firestore": {
     "database": "(default)",
-    "location": "asia-south2",
+    "location": "asia-south1",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   }
