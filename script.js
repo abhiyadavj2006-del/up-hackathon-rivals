@@ -368,7 +368,6 @@ const handleRegisterFlow = () => {
         setUsers(users);
       }
 
-      await syncUserToDatabase(profile);
       localStorage.setItem(SESSION_KEY, JSON.stringify({ email: storedEmail, name, loggedIn: true }));
       showStatus(statusEl, 'Registration successful! Redirecting...', 'success');
       setTimeout(() => {
