@@ -224,33 +224,6 @@ const loginWithFirebaseAuth = async (email, password) => {
   }
 };
 
-const syncUserToDatabase = async (user) => {
-  const db = getDb();
-
-  if (!db) {
-    console.error('Firebase database is not available.');
-    return false;
-  }
-
-  try {
-    await db.collection('Users').doc(user.email).set({
-      name: user.name,
-      email: user.email,
-      college: user.college,
-      phone: user.phone,
-      track: user.track,
-      summary: user.summary,
-      createdAt: user.createdAt || new Date().toISOString(),
-      source: 'website'
-    }, { merge: true });
-
-    console.log('✅ User saved to Firestore:', user.email);
-    return true;
-  } catch (error) {
-    console.error('❌ Firebase Firestore error:', error);
-    return false;
-  }
-};
 
 const findUserByEmail = async (email) => {
   const db = getDb();
