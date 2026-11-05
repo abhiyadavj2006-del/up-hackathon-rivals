@@ -4,7 +4,10 @@ service cloud.firestore {
     match /Users/{userId} {
       // A newly registered user can create only their own profile document
       // (registration signs the user in first, then writes doc(user.uid)).
-      allow create: if request.auth != null && request.auth.uid == userId;
+      // The admin can also create documents (used when migrating data).
+      allow create: if request.auth != null
+        && (request.auth.uid == userId
+          || request.auth.token.email == 'admin@uphackathonrivals.com');
 
       // A user can read their own profile; the admin can read any profile.
       allow get: if request.auth != null
