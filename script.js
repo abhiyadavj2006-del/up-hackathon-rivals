@@ -454,3 +454,40 @@ const handleLoginFlow = () => {
 
 handleRegisterFlow();
 handleLoginFlow();
+
+// Sync the home-page nav with the local session (localStorage-based; index.html loads no Firebase SDK).
+function syncNavAuth() {
+  const loginLink = document.getElementById('loginLink');
+  const logoutBtn = document.getElementById('logoutBtn');
+  let loggedIn = false;
+  try {
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    loggedIn = !!(session && session.loggedIn);
+  } catch (e) {
+    loggedIn = false;
+  }
+  if (loginLink) {
+    loginLink.hidden = loggedIn;
+    loginLink.style.display = loggedIn ? 'none' : '';
+  }
+  if (logoutBtn) {
+    logoutBtn.hidden = !loggedIn;
+    logoutBtn.style.display = loggedIn ? '' : 'none';
+  }
+}
+
+const logoutBtn = document.getElementById('logoutBtn');
+if (logoutBtn) {
+  logoutBtn.addEventListener('click', () => {
+    localStorage.removeItem(SESSION_KEY);
+    if (window.firebase && window.firebase.auth) {
+      try {
+        firebase.auth().signOut();
+      } catch (e) {
+      }
+    }
+    syncNavAuth();
+  });
+}
+
+syncNavAuth();
