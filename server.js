@@ -1,73 +1,71 @@
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
+const {
+  generateOtp,
+  isValidEmail,
+  createOtpToken,
+  verifyOtpToken,
+  sendOtpEmail,
+  OTP_TTL_MS,
+} = require('./lib/otp-service');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+// Fallback store for local use when no token is supplied (e.g. old clients).
+// On Vercel the stateless signed token is used instead, because serverless
+// function instances do not share memory.
 const otpStore = new Map();
 
 app.use(cors());
 app.use(express.json());
 
-const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
-
-const getTransporter = () => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    return null;
-  }
-
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    }
-  });
-};
-
-const sendOtpHandler = (req, res) => {
+const sendOtpHandler = async (req, res) => {
   const { email } = req.body || {};
 
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!isValidEmail(email)) {
     return res.status(400).json({ ok: false, message: 'Valid email is required.' });
   }
 
   const otp = generateOtp();
-  const expiresAt = Date.now() + 5 * 60 * 1000;
+  const expiresAt = Date.now() + OTP_TTL_MS;
   otpStore.set(email.toLowerCase(), { otp, expiresAt });
+  const token = createOtpToken(email, otp, expiresAt);
 
-  const transporter = getTransporter();
-
-  if (!transporter) {
-    return res.json({
-      ok: true,
-      preview: true,
-      message: 'OTP ready for testing only. Set EMAIL_USER and EMAIL_PASS to send real email.',
-      otp
-    });
+  try {
+    const sent = await sendOtpEmail(email, otp);
+    if (!sent) {
+      return res.json({
+        ok: true,
+        preview: true,
+        message: 'OTP ready for testing only. Set EMAIL_USER and EMAIL_PASS to send real email.',
+        otp,
+        token,
+      });
+    }
+  } catch {
+    return res.status(500).json({ ok: false, message: 'Unable to send email right now.' });
   }
 
-  transporter.sendMail({
-    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-    to: email,
-    subject: 'Your OTP for Up Hackathon Rivals',
-    text: `Your OTP is ${otp}. It is valid for 5 minutes.`
-  }, (error) => {
-    if (error) {
-      return res.status(500).json({ ok: false, message: 'Unable to send email right now.' });
-    }
-
-    return res.json({ ok: true, message: 'OTP sent to your email.' });
-  });
+  return res.json({ ok: true, message: 'OTP sent to your email.', token });
 };
 
 const verifyOtpHandler = (req, res) => {
-  const { email, otp } = req.body || {};
+  const { email, otp, token } = req.body || {};
 
   if (!email || !otp) {
     return res.status(400).json({ ok: false, message: 'Email and OTP are required.' });
   }
 
+  // Stateless token path (Vercel serverless).
+  if (token) {
+    const result = verifyOtpToken(token, email, otp);
+    if (!result.valid) {
+      return res.status(400).json({ ok: false, message: result.message });
+    }
+    return res.json({ ok: true, message: 'OTP verified successfully.' });
+  }
+
+  // In-memory fallback (local server).
   const key = String(email).toLowerCase();
   const record = otpStore.get(key);
 

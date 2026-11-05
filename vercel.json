@@ -1,0 +1,1 @@
+{"$schema":"https://openapi.vercel.sh/vercel.json","rewrites":[{"destination":"/api/requestOtp","source":"/requestOtp"},{"destination":"/api/verifyOtp","source":"/verifyOtp"},{"destination":"/api/health","source":"/health"},{"destination":"/api/health","source":"/"}]}
