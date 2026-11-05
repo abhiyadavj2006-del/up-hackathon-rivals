@@ -92,6 +92,7 @@ revealItems.forEach((item) => revealObserver.observe(item));
 const USERS_KEY = 'up_hackathon_users';
 const SESSION_KEY = 'up_hackathon_session';
 const OTP_EMAIL_KEY = 'up_hackathon_pending_email';
+const OTP_TOKEN_KEY = 'up_hackathon_otp_token';
 
 const resolveOtpApiBase = () => {
   const host = (window.location?.hostname || '').toLowerCase();
@@ -101,8 +102,12 @@ const resolveOtpApiBase = () => {
     return 'http://localhost:5001/up-hackathon-rivals/us-central1';
   }
 
-  if (host.includes('firebaseapp.com') || host.includes('web.app') || host.includes('up-hackathon-rivals')) {
+  if (host.includes('firebaseapp.com') || host.includes('web.app')) {
     return 'https://us-central1-up-hackathon-rivals.cloudfunctions.net';
+  }
+
+  if (host.includes('github.io') || host.includes('up-hackathon-rivals')) {
+    return 'https://up-hackathon-otp.vercel.app';
   }
 
   return window.location.origin;
@@ -154,6 +159,7 @@ const sendOtpToApi = async (email) => {
   });
 
   const result = await response.json();
+  if (result.token) sessionStorage.setItem(OTP_TOKEN_KEY, result.token);
   return { ok: response.ok, ...result };
 };
 
@@ -161,7 +167,7 @@ const verifyOtpWithApi = async (email, otp) => {
   const response = await fetch(`${OTP_API_BASE}/verifyOtp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, otp })
+    body: JSON.stringify({ email, otp, token: sessionStorage.getItem(OTP_TOKEN_KEY) || undefined })
   });
 
   const result = await response.json();
@@ -322,7 +328,7 @@ const handleRegisterFlow = () => {
       }
 
       sessionStorage.setItem(OTP_EMAIL_KEY, email);
-      showStatus(statusEl, 'OTP sent to your email. Verify it to finish registration.', 'success');
+      showStatus(statusEl, otpResult.preview && otpResult.otp ? `Testing mode — your OTP is ${otpResult.otp}. Verify it to finish registration.` : 'OTP sent to your email. Verify it to finish registration.', 'success');
       showOtpBox('register-otp-box', true);
       const otpInput = document.getElementById('register-otp');
       if (otpInput) otpInput.focus();
@@ -386,7 +392,7 @@ const handleRegisterFlow = () => {
     }
 
     sessionStorage.setItem(OTP_EMAIL_KEY, email);
-    showStatus(statusEl, 'A new OTP has been sent to your email.', 'success');
+    showStatus(statusEl, otpResult.preview && otpResult.otp ? `Testing mode — your new OTP is ${otpResult.otp}.` : 'A new OTP has been sent to your email.', 'success');
     const otpInput = document.getElementById('register-otp');
     if (otpInput) otpInput.value = '';
     if (otpInput) otpInput.focus();
