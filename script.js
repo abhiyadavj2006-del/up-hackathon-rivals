@@ -117,7 +117,7 @@ globalThis.resolveOtpApiBase = resolveOtpApiBase;
 window.resolveOtpApiBase = resolveOtpApiBase;
 const OTP_API_BASE = resolveOtpApiBase();
 const firebaseConfig = {
-  apiKey: 'AIzaSyBZWn_MYM_DCii9PLwXrq0kRLD3z04X8Co',
+  apiKey: 'AIzaSyCNBQ2O8xJg1Mr6IpJQSynkGdCMRXvdtyc',
   authDomain: 'up-hackathon-rivals-8f4e9.firebaseapp.com',
   projectId: 'up-hackathon-rivals-8f4e9',
   storageBucket: 'up-hackathon-rivals-8f4e9.firebasestorage.app',
