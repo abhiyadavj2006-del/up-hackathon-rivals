@@ -1,8 +1,20 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /Users/{document=**} {
-      allow read, write: if true;
+    match /Users/{userId} {
+      // A newly registered user can create only their own profile document
+      // (registration signs the user in first, then writes doc(user.uid)).
+      allow create: if request.auth != null && request.auth.uid == userId;
+
+      // A user can read their own profile; the admin can read any profile.
+      allow get: if request.auth != null
+        && (request.auth.uid == userId
+          || request.auth.token.email == 'admin@uphackathonrivals.com');
+
+      // Only the admin can list all participants, update or delete.
+      allow list, update, delete: if request.auth != null
+        && request.auth.token.email == 'admin@uphackathonrivals.com';
     }
+    // Everything else is denied by default.
   }
 }
