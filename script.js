@@ -99,11 +99,11 @@ const resolveOtpApiBase = () => {
   const protocol = (window.location?.protocol || '').toLowerCase();
 
   if (!host || protocol === 'file:' || host === 'localhost' || host === '127.0.0.1') {
-    return 'http://localhost:5001/up-hackathon-rivals/us-central1';
+    return 'http://localhost:5001/up-hackathon-rivals-8f4e9/us-central1';
   }
 
   if (host.includes('firebaseapp.com') || host.includes('web.app')) {
-    return 'https://us-central1-up-hackathon-rivals.cloudfunctions.net';
+    return 'https://us-central1-up-hackathon-rivals-8f4e9.cloudfunctions.net';
   }
 
   if (host.includes('github.io') || host.includes('up-hackathon-rivals')) {
