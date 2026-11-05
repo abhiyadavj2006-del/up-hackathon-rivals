@@ -50,10 +50,12 @@ faqItems.forEach((item) => {
   });
 });
 
-const targetDate = new Date();
-targetDate.setDate(targetDate.getDate() + 14);
-targetDate.setHours(targetDate.getHours() + 8);
-targetDate.setMinutes(targetDate.getMinutes() + 32);
+// Fixed target: Grand Finale of the next edition - 18 October 2027, 09:00 IST.
+const targetDate = new Date("2027-10-18T09:00:00+05:30");
+
+let countdownTimer;
+
+const applicationsDaysEl = document.getElementById('applications-days');
 
 const countdownEls = {
   days: document.querySelector('.countdown div:nth-child(1) strong'),
@@ -72,10 +74,12 @@ const updateCountdown = () => {
   if (countdownEls.days) countdownEls.days.textContent = String(days).padStart(2, '0');
   if (countdownEls.hours) countdownEls.hours.textContent = String(hours).padStart(2, '0');
   if (countdownEls.mins) countdownEls.mins.textContent = String(minutes).padStart(2, '0');
+  if (applicationsDaysEl) applicationsDaysEl.textContent = String(days);
+  if (diff === 0 && countdownTimer) clearInterval(countdownTimer);
 };
 
 updateCountdown();
-setInterval(updateCountdown, 60000);
+countdownTimer = setInterval(updateCountdown, 60000);
 
 const revealItems = document.querySelectorAll('.reveal');
 const revealObserver = new IntersectionObserver((entries) => {
